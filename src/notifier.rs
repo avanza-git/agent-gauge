@@ -40,6 +40,8 @@ impl CrossingDetector {
 
 /// Fire-and-forget notification on a background thread (never blocks the UI).
 pub fn send(title: String, body: String) {
+    #[cfg(target_os = "macos")]
+    use_app_bundle_identity();
     std::thread::spawn(move || {
         let _ = notify_rust::Notification::new()
             .appname("AgentGauge")
@@ -47,6 +49,27 @@ pub fn send(title: String, body: String) {
             .body(&body)
             .icon("dialog-warning")
             .show();
+    });
+}
+
+/// Bundle identifier written by `scripts/install-macos.sh`.
+#[cfg(target_os = "macos")]
+pub const MACOS_BUNDLE_ID: &str = "com.github.agent-gauge";
+
+/// macOS notifications are posted on behalf of an app bundle. When we run from
+/// `AgentGauge.app`, use our own identity; a bare binary keeps the library's
+/// default sender (setting an id that isn't registered would fail anyway).
+#[cfg(target_os = "macos")]
+fn use_app_bundle_identity() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        // Resolve symlinks: `~/.local/bin/agent-gauge` points into the bundle.
+        let in_bundle = std::env::current_exe()
+            .and_then(std::fs::canonicalize)
+            .is_ok_and(|p| p.to_string_lossy().contains(".app/Contents/MacOS/"));
+        if in_bundle {
+            let _ = notify_rust::set_application(MACOS_BUNDLE_ID);
+        }
     });
 }
 
