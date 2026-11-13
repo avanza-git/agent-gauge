@@ -1,0 +1,31 @@
+{
+    "claude_dir": "~/.claude",
+    "refresh_seconds": 60,
+    "refresh_max_seconds": 300,
+    "statusline_cache_path": "",
+    "usage_endpoint_min_seconds": 300,
+    "osd_opacity": 0.75,
+    "osd_scale": 1.0,
+    "osd_view_mode": "bars",
+    "osd_position": "top-right",
+    "osd_x": null,
+    "osd_y": null,
+    "osd_minimized": false,
+    "osd_always_on_top": true,
+    "show_in_taskbar": false,
+    "force_x11": true,
+    "theme": "default",
+    "notifications_enabled": true,
+    "notify_thresholds": [
+        0.75,
+        0.9
+    ],
+    "forecast_enabled": true,
+    "forecast_notify": true,
+    "providers": [
+        "claude"
+    ],
+    "codex_poll_seconds": 300,
+    "codex_bin": "",
+    "osd_hidden_rows": []
+}

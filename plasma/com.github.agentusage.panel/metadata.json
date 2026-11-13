@@ -1,0 +1,17 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Id": "com.github.agentusage.panel",
+        "Name": "AgentGauge",
+        "Description": "Claude and Codex 5-hour and weekly usage in your panel",
+        "Icon": "utilities-system-monitor",
+        "Version": "0.1.0",
+        "Category": "System Information",
+        "Authors": [
+            {
+                "Name": "AgentGauge contributors"
+            }
+        ]
+    },
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

@@ -1,0 +1,6 @@
+/target
+
+# Local agent and cloud-credential folders
+/.agents/
+/.aws/
+/.codex/
