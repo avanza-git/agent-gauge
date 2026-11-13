@@ -14,9 +14,39 @@ const MACOS_KEYCHAIN_SERVICES: &[&str] = &["Claude Code-credentials", "Claude Co
 
 /// Extract `claudeAiOauth.accessToken` from a credentials JSON blob.
 pub fn extract_token(blob: &str) -> Option<String> {
+    oauth_str(blob, "accessToken")
+}
+
+/// Extract `claudeAiOauth.subscriptionType` ("max", "pro", …) from a credentials JSON blob.
+pub fn extract_subscription_type(blob: &str) -> Option<String> {
+    oauth_str(blob, "subscriptionType")
+}
+
+fn oauth_str(blob: &str, key: &str) -> Option<String> {
     let v: Value = serde_json::from_str(blob).ok()?;
-    let tok = v.get("claudeAiOauth")?.get("accessToken")?.as_str()?.trim();
-    (!tok.is_empty()).then(|| tok.to_string())
+    let s = v.get("claudeAiOauth")?.get(key)?.as_str()?.trim();
+    (!s.is_empty()).then(|| s.to_string())
+}
+
+/// Claude Code's stored credentials JSON, in lookup order: the credentials file,
+/// then (macOS) the login Keychain. Lazy, so the Keychain is only asked when
+/// the file doesn't have what the caller needs.
+fn credential_blobs(claude_dir: &Path) -> impl Iterator<Item = String> + '_ {
+    let file =
+        std::iter::once_with(move || fs::read_to_string(claude_dir.join(".credentials.json")).ok());
+    #[cfg(target_os = "macos")]
+    let keychain = MACOS_KEYCHAIN_SERVICES.iter().map(|service| {
+        let out = std::process::Command::new("/usr/bin/security")
+            .args(["find-generic-password", "-s", service, "-w"])
+            .output()
+            .ok()?;
+        out.status
+            .success()
+            .then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
+    });
+    #[cfg(not(target_os = "macos"))]
+    let keychain = std::iter::empty();
+    file.chain(keychain).flatten()
 }
 
 pub fn load_token(claude_dir: &Path) -> Option<String> {
@@ -26,40 +56,13 @@ pub fn load_token(claude_dir: &Path) -> Option<String> {
             return Some(t.to_string());
         }
     }
-
-    if let Ok(blob) = fs::read_to_string(claude_dir.join(".credentials.json"))
-        && let Some(t) = extract_token(&blob)
-    {
-        return Some(t);
-    }
-
-    #[cfg(target_os = "macos")]
-    for service in MACOS_KEYCHAIN_SERVICES {
-        let out = std::process::Command::new("/usr/bin/security")
-            .args(["find-generic-password", "-s", service, "-w"])
-            .output();
-        if let Ok(out) = out
-            && out.status.success()
-            && let Some(t) = extract_token(String::from_utf8_lossy(&out.stdout).trim())
-        {
-            return Some(t);
-        }
-    }
-
-    None
+    credential_blobs(claude_dir).find_map(|b| extract_token(&b))
 }
 
-/// Subscription type ("max", "pro", …) from the credentials file, or "".
+/// Subscription type ("max", "pro", …) from the stored credentials, or "".
 pub fn load_subscription_type(claude_dir: &Path) -> String {
-    fs::read_to_string(claude_dir.join(".credentials.json"))
-        .ok()
-        .and_then(|b| serde_json::from_str::<Value>(&b).ok())
-        .and_then(|v| {
-            v.get("claudeAiOauth")?
-                .get("subscriptionType")?
-                .as_str()
-                .map(str::to_string)
-        })
+    credential_blobs(claude_dir)
+        .find_map(|b| extract_subscription_type(&b))
         .unwrap_or_default()
 }
 
@@ -85,6 +88,16 @@ mod tests {
             None
         );
         assert_eq!(extract_token("not json"), None);
+    }
+
+    #[test]
+    fn extracts_subscription_type() {
+        let blob = r#"{"claudeAiOauth":{"accessToken":"t","subscriptionType":"pro"}}"#;
+        assert_eq!(extract_subscription_type(blob).as_deref(), Some("pro"));
+        assert_eq!(
+            extract_subscription_type(r#"{"claudeAiOauth":{"accessToken":"t"}}"#),
+            None
+        );
     }
 
     #[test]
