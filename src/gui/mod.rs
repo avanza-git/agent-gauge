@@ -52,10 +52,25 @@ pub fn run(config_path: PathBuf) -> i32 {
         viewport = viewport.with_position(egui::pos2(x, y));
     }
 
-    let options = eframe::NativeOptions {
+    #[allow(unused_mut)]
+    let mut options = eframe::NativeOptions {
         viewport,
         ..Default::default()
     };
+    // macOS has no per-window taskbar flag: the Dock icon (and Cmd-Tab entry)
+    // follows the app's activation policy, which is fixed at launch.
+    #[cfg(target_os = "macos")]
+    {
+        use winit::platform::macos::{ActivationPolicy, EventLoopBuilderExtMacOS};
+        let policy = if cfg.show_in_taskbar {
+            ActivationPolicy::Regular
+        } else {
+            ActivationPolicy::Accessory
+        };
+        options.event_loop_builder = Some(Box::new(move |builder| {
+            builder.with_activation_policy(policy);
+        }));
+    }
     let relaunch = Arc::new(AtomicBool::new(false));
     let relaunch_flag = relaunch.clone();
     let result = eframe::run_native(

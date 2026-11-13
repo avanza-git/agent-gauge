@@ -28,6 +28,8 @@ const BIN_CANDIDATES: &[&str] = &[
     "/usr/lib/chatgpt/resources/codex", // ChatGPT desktop (Linux) bundles it here
     "/opt/homebrew/bin/codex",
     "/usr/local/bin/codex",
+    "~/.local/bin/codex", // macOS apps and LaunchAgents start with a bare PATH
+    "/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex",
 ];
 
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -60,7 +62,8 @@ fn now_ts() -> f64 {
         .unwrap_or(0.0)
 }
 
-/// `codex_bin` from config → `PATH` → well-known install locations.
+/// `codex_bin` from config → `PATH` → well-known install locations → (macOS)
+/// the CLI bundled in the ChatGPT desktop app, wherever it is installed.
 pub fn find_codex_bin(cfg: &Config) -> Option<PathBuf> {
     let configured = cfg.codex_bin.trim();
     if !configured.is_empty() {
@@ -78,8 +81,33 @@ pub fn find_codex_bin(cfg: &Config) -> Option<PathBuf> {
     }
     BIN_CANDIDATES
         .iter()
-        .map(PathBuf::from)
+        .map(|p| expand_tilde(p))
         .find(|p| p.is_file())
+        .or_else(macos_app_codex_bin)
+}
+
+/// The CLI the ChatGPT/Codex desktop app (bundle id `com.openai.codex`) ships in
+/// `Contents/Resources/codex-cli/bin/codex`. Launch Services knows where the app
+/// is, so this works for `/Applications`, `~/Applications` or another volume.
+#[cfg(target_os = "macos")]
+fn macos_app_codex_bin() -> Option<PathBuf> {
+    use objc2_app_kit::NSWorkspace;
+    use objc2_foundation::NSString;
+
+    const BUNDLE_IDS: &[&str] = &["com.openai.codex", "com.openai.chat"];
+    let workspace = NSWorkspace::sharedWorkspace(); // thread-safe
+    BUNDLE_IDS.iter().find_map(|id| {
+        let app = workspace
+            .URLForApplicationWithBundleIdentifier(&NSString::from_str(id))?
+            .to_file_path()?;
+        let bin = app.join("Contents/Resources/codex-cli/bin/codex");
+        bin.is_file().then_some(bin)
+    })
+}
+
+#[cfg(not(target_os = "macos"))]
+fn macos_app_codex_bin() -> Option<PathBuf> {
+    None
 }
 
 /// Extract the two windows from an `account/rateLimits/read` result.

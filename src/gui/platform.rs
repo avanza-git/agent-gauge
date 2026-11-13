@@ -93,7 +93,44 @@ pub fn set_skip_taskbar(
     Ok(())
 }
 
-#[cfg(not(target_os = "linux"))]
+/// macOS: winit's `WindowLevel::AlwaysOnTop` already raises the window to the
+/// floating level, but it still lives on one Space and hides behind full-screen
+/// apps. Joining all Spaces (and full-screen ones as an auxiliary window) is
+/// what makes it behave like an OSD. Must run on the main thread.
+#[cfg(target_os = "macos")]
+pub fn set_always_on_top(
+    window: &impl raw_window_handle::HasWindowHandle,
+    on_top: bool,
+) -> DynResult {
+    use objc2_app_kit::{NSView, NSWindowCollectionBehavior as B};
+    use objc2_foundation::MainThreadMarker;
+    use raw_window_handle::RawWindowHandle;
+
+    let RawWindowHandle::AppKit(h) = window.window_handle()?.as_raw() else {
+        return Ok(());
+    };
+    if MainThreadMarker::new().is_none() {
+        return Ok(()); // AppKit is main-thread only; the next startup hint retries.
+    }
+    // SAFETY: winit hands out a valid NSView pointer for the window's lifetime,
+    // and we're on the main thread (checked above).
+    let view: &NSView = unsafe { h.ns_view.cast::<NSView>().as_ref() };
+    let Some(ns_window) = view.window() else {
+        return Ok(());
+    };
+    let osd = B::CanJoinAllSpaces | B::FullScreenAuxiliary | B::Stationary | B::IgnoresCycle;
+    let mut behavior = ns_window.collectionBehavior();
+    if on_top {
+        behavior.insert(osd);
+        behavior.remove(B::MoveToActiveSpace);
+    } else {
+        behavior.remove(osd);
+    }
+    ns_window.setCollectionBehavior(behavior);
+    Ok(())
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 pub fn set_always_on_top(
     _window: &impl raw_window_handle::HasWindowHandle,
     _on_top: bool,

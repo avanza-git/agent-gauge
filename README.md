@@ -87,6 +87,33 @@ install -Dm755 target/release/agent-gauge ~/.local/bin/agent-gauge
 Linux builds need the usual windowing dev libraries (X11/Wayland, xkbcommon,
 OpenGL); notifications use D-Bus in pure Rust, so no libdbus is required.
 
+### macOS
+
+```bash
+./scripts/install-macos.sh                # build, install, start now and at login
+./scripts/install-macos.sh --no-autostart # install the app only
+./scripts/install-macos.sh --uninstall    # stop and remove (config/cache kept)
+```
+
+The installer builds a release binary, wraps it in an ad-hoc-signed
+`~/Applications/AgentGauge.app` (bundle id `com.github.agent-gauge`), links
+`~/.local/bin/agent-gauge` to it for the CLI and statusLine, and registers a
+LaunchAgent (`~/Library/LaunchAgents/com.github.agent-gauge.plist`). launchd
+restarts it after a crash; **Quit** from the menu keeps it stopped until the next
+login. Logs go to `~/.cache/agent-gauge/widget.log`. Re-running the script updates
+the install. Only Xcode Command Line Tools and Rust are required.
+
+- **Credentials:** Claude Code keeps its token in the login Keychain. The first
+  read runs `/usr/bin/security`, and macOS may ask for permission. Choose
+  **Always Allow**.
+- **Dock icon:** hidden by default. **Show window in taskbar** shows a Dock icon and
+  Cmd-Tab entry instead (the widget restarts to apply it).
+- **Always on top** also keeps the OSD on every Space and over full-screen apps.
+- **Notifications:** allow *AgentGauge* in System Settings → Notifications. When
+  you run the bare binary instead of the app, notifications come from a generic sender.
+- Config and cache use the same `~/.config/agent-gauge` / `~/.cache/agent-gauge`
+  paths as on Linux. `force_x11` and the KDE panel widget are Linux-only.
+
 ## Usage
 
 ```bash
@@ -153,7 +180,10 @@ reports itself. The call is bounded to 12 s, made at most every
 `codex_poll_seconds`, and cached in `~/.cache/agent-gauge/codex_limits.json`
 (copied from the legacy cache on first use). The `codex` binary is found via `codex_bin`,
 then `PATH`, then `/usr/lib/chatgpt/resources/codex` (ChatGPT desktop on Linux),
-`/opt/homebrew/bin/codex` and `/usr/local/bin/codex`. Rows hide automatically
+`/opt/homebrew/bin/codex`, `/usr/local/bin/codex` and `~/.local/bin/codex`.
+On macOS it then uses the CLI bundled in the ChatGPT desktop app
+(`Contents/Resources/codex-cli/bin/codex`), located through Launch Services so
+it works wherever the app is installed. Rows hide automatically
 when Codex is missing or logged out (`codex login` brings them back).
 
 ### KDE top-panel usage text (Plasma 6)
@@ -212,6 +242,8 @@ Development checks: `cargo test`, `node tests/panel-widget.cjs`, and
 the KDE top panel, use the Plasma widget above.
 
 - **Linux (X11/XWayland):** toggled live via the EWMH `_NET_WM_STATE_SKIP_TASKBAR` hint.
+- **macOS:** controls the Dock icon and Cmd-Tab entry (app activation policy);
+  toggling from the menu restarts the widget.
 - **Windows:** applied at window creation; toggling from the menu restarts the widget.
 - **Native Wayland:** the compositor decides; the setting has no effect.
 
@@ -236,6 +268,8 @@ point `statusline_cache_path` at it: while it's fresh the endpoint is skipped
 throttles, a dump younger than 20 minutes beats the last stored sample.
 
 ## Autostart (systemd user service)
+
+On macOS use `./scripts/install-macos.sh`, which installs a LaunchAgent (see [macOS](#macos)).
 
 ```ini
 # ~/.config/systemd/user/agent-gauge.service
